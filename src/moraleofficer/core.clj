@@ -30,7 +30,6 @@
    {:name "BigCats" :fetch-count 1}])
 
 
-
 (defn get-url-content [url]
   ;; Some user string so reddit lets me get sweet data from it
   (let [h {"User-Agent" "Mozilla/5.0 (Windows NT 6.1;) Gecko/20100101 Firefox/13.0.1"}]
@@ -40,9 +39,11 @@
                      :retry-handler (fn [ex try-count http-context]
                                       (if (> try-count 10) false true))})))
 
+
 (defn get-thumbnails-from-html [resp]
   (extract-from (parse (:body resp)) ".thumbnail"
                 [:data-event-action]))
+
 
 (defn to-full-url [href]
   (if (str/includes? href "http")
@@ -63,6 +64,7 @@
      ;; force eval? I might not need this
      (take fetch-count))))
 
+;; i lost the plot from here on down
 (defn delayed-get-link-for-sub [sub]
   ;; a little more jitter
   (Thread/sleep (rand-int 1000))
