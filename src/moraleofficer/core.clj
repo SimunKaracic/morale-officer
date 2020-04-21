@@ -50,6 +50,13 @@
     href
     (str "https://old.reddit.com" href)))
 
+(defn trusted-link? [url]
+  (cond
+    (str/includes? url "giphy") true
+    (str/includes? url "imgur") true
+    (str/includes? url "redd") true
+    :else false))
+
 (defn get-links-for-sub [{:keys [name fetch-count]}]
   (let [url (str "https://old.reddit.com/r/" name "/top")
         resp (get-url-content url)
@@ -61,6 +68,7 @@
      (map :href) ;; filter out the bloody ads
      (filter #(not (str/includes? % "alb.reddit.com")))
      (map to-full-url)
+     (filter trusted-link?)
      ;; force eval? I might not need this
      (take fetch-count))))
 
