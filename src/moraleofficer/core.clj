@@ -90,8 +90,8 @@
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
-  (let [what-is-it (doall (map open-links-in-browser (get-the-links)))]
+  (let [links (doall (map open-links-in-browser (get-the-links)))]
     (println "Please wait, generating moral support")
-    (run! println what-is-it)
+    (run! println links)
     (println "Moral support generated")
     (shutdown-agents)))
