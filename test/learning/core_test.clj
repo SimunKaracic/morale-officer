@@ -1,6 +1,6 @@
-(ns morale-officer.core-test
+(ns moraleofficer.core-test
   (:require [clojure.test :refer :all]
-            [morale-officer.core :refer :all]))
+            [moraleofficer.core :refer :all]))
 
 (deftest a-test
   (testing "FIXME, I fail."
