@@ -1,0 +1,6 @@
+[debug] downloaded https://repo1.maven.org/maven2/com/eed3si9n/sbt-assembly_2.12_1.0/x.y.z/sbt-assembly-x.y.z.pom
+[debug] downloaded https://repo1.maven.org/maven2/com/eed3si9n/sbt-assembly_2.12_1.0/x.y.z/sbt-assembly-x.y.z.pom.sha1
+[debug] downloaded https://repo.scala-sbt.org/scalasbt/sbt-plugin-releases/com.eed3si9n/sbt-assembly/scala_2.12/sbt_1.0/x.y.z/ivys/ivy.xml
+[debug] downloaded https://repo.scala-sbt.org/scalasbt/sbt-plugin-releases/com.eed3si9n/sbt-assembly/scala_2.12/sbt_1.0/x.y.z/ivys/ivy.xml.sha1
+[debug] downloaded https://repo.typesafe.com/typesafe/ivy-releases/com.eed3si9n/sbt-assembly/scala_2.12/sbt_1.0/x.y.z/ivys/ivy.xml
+[debug] downloaded https://repo.typesafe.com/typesafe/ivy-releases/com.eed3si9n/sbt-assembly/scala_2.12/sbt_1.0/x.y.z/ivys/ivy.xml.sha1
