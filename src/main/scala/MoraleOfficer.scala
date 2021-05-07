@@ -1,47 +1,45 @@
+import ammonite.ops.home
+import com.typesafe.config.ConfigFactory
+import io.getquill.{JdbcContextConfig, SnakeCase, SqliteZioJdbcContext}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
-import sttp.client3.{RequestT, UriContext, basicRequest}
-import zio.blocking.{Blocking, effectBlocking}
-import zio.clock.Clock
+import zio.blocking.effectBlocking
 import zio.console.putStrLn
-import zio.{ExitCode, Schedule, URIO, ZIO, random}
 import zio.duration.durationInt
+import zio.{Schedule, Task, ZIO, ZLayer, ZManaged}
 
 import java.awt.Desktop
 import java.io.IOException
 import java.net.URI
 import scala.jdk.CollectionConverters.CollectionHasAsScala
-import scala.util.Random
+import scala.util.control.NonFatal
 
 object MoraleOfficer extends zio.App {
-  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = (for {
-    _ <- putStrLn("Checking out subs...")
-    subs <- ZIO.foreachPar(catSubs) { sub =>
-      get_subreddit(sub).zipLeft(putStrLn(s"Gathering posts for ${sub}"))
-    }
-    _ <- putStrLn("Gathering cattiest posts")
-    posts = subs.flatMap(extract_top_posts).toSet
-    _ <- putStrLn("Frantically opening browser tabs so you don't see the errors in the output")
-    _ <- ZIO.foreachPar_(posts) { post =>
-      open_in_browser(s"https://old.reddit.com${post}")
-    }
+  object SqliteContext extends SqliteZioJdbcContext(SnakeCase)
+
+  import SqliteContext._
+
+  override def run(args: List[String]) = (for {
+    _ <- initializeDb()
+    posts <- ZIO.foreachParN(10)(CatSubs.list) { sub =>
+      extract_posts(sub)
+        .zipLeft(putStrLn(s"Gathering posts from ${sub}"))
+    }.flatMap(pp => ZIO.succeed(pp.flatten))
+
+    // wow, this is not good
+    // I really need more practice with this
+    newPosts <- ZIO.filter(posts) { post =>
+      getPostByUrl(post)
+        .flatMap(p => ZIO.succeed(p.isEmpty))
+    }.flatMap(np => ZIO.succeed(np.sortBy(_.upvotes)(Ordering.Int.reverse).take(5)))
+
+    _ <- ZIO.foreachPar_(newPosts)(open_post)
     _ <- putStrLn("Morale successfully officered!")
   } yield ()).exitCode
 
-  private def get_subreddit(sub: String) = {
-    get_html(s"https://old.reddit.com/r/${sub}")
-  }
 
-  private def extract_top_posts(doc: Document) = {
-    val thumbnails = doc
-      .getElementsByAttributeValue("data-event-action", "thumbnail")
-
-    val links = (for (tn <- thumbnails.asScala if !tn.html().contains("- announcement")) yield tn.attr("href"))
-      .filter(x => x.contains("/r/"))
-      .filter(x => x.contains("comments"))
-      .slice(1, 3)
-
-    links
+  private def open_post(post: Post) = {
+    insertPost(post) *> open_in_browser(post.link)
   }
 
   private def open_in_browser(link: String) = {
@@ -49,34 +47,85 @@ object MoraleOfficer extends zio.App {
       if (Desktop.isDesktopSupported && Desktop.getDesktop.isSupported(Desktop.Action.BROWSE)) {
         Desktop.getDesktop.browse(new URI(link))
       }).refineToOrDie[IOException]
-      .retry(Schedule.recurs(10) && Schedule.exponential(100.millis))
-      .orDie
+      .retry(Schedule.recurs(20) && Schedule.spaced(100.millis))
+      .orElse(putStrLn(s"Failed to open $link in browser"))
   }
 
-  private def get_html(url: String): URIO[Any with random.Random with Blocking with Clock, Document] = {
-    val doc = Jsoup.connect(url)
+  private def extract_posts(sub: String) = {
+    val doc = Jsoup.connect(s"https://old.reddit.com/r/${sub}")
       .header("user-agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0")
+    val retryPolicy = (Schedule.spaced(100.millis) && Schedule.recurs(20)).jittered
 
     effectBlocking(doc.get())
       .refineToOrDie[IOException]
-      .delay(Random.nextInt(3).seconds)
-      .retry((Schedule.exponential(100.millis) && Schedule.recurs(20)).jittered)
-      .orDie
+      .retry(retryPolicy)
+      .map(posts_from_document)
+      .orElseSucceed(List.empty[Post])
   }
 
-  private val catSubs = List("CatLoaf",
-    "Floof",
-    "Blep",
-    "CatsStandingUp",
-    "CatBellies",
-    "DelightfullyChubby",
-    "Meow_Irl",
-    "Cats",
-    "CatGifs",
-    "CatsWhoYell",
-    "TuckedInKitties",
-    "BabyBigCatGifs",
-    "BigCats",
-    "catdimension",
-  )
+  private def posts_from_document(doc: Document): List[Post] = {
+    val posts = doc.getElementsByClass("thing").asScala
+      .flatMap(x => {
+        val upvotes = x.select("div.score.unvoted").text()
+          .replace(".", "")
+          .replace("k", "000")
+
+        val link = x.select("a.bylink.comments[href]").attr("href").toString
+
+        upvotesToInt(upvotes).map(Post(link, _))
+      }).toList
+    // get rid of this toList
+
+    posts
+  }
+
+  private def upvotesToInt(s: String): Option[Int] = {
+    try {
+      Some(s.toInt)
+    } catch {
+      case NonFatal(e) =>
+        None
+    }
+  }
+
+  //////////////////////////
+  // DB SETTINGS AND QUERIES
+  //////////////////////////
+
+  private val connection = {
+    // config defined here because
+    // i cant figure out relative file paths in the conf
+    val conf = ConfigFactory.parseString(
+      s"""
+         | db {
+         |   driverClassName=org.sqlite.JDBC
+         |   jdbcUrl="jdbc:sqlite:${home}/.neelix.db"
+         | }
+    """.stripMargin)
+
+    ZLayer.fromManaged(for {
+      ds <- ZManaged.fromAutoCloseable(Task(JdbcContextConfig(conf.getConfig("db")).dataSource))
+      conn <- ZManaged.fromAutoCloseable(Task(ds.getConnection))
+    } yield conn)
+  }
+
+  case class Post(link: String, upvotes: Int)
+
+  def getPostByUrl(post: Post) = {
+    val q = quote {
+      query[Post].filter(p => lift(post.link) == p.link)
+    }
+    SqliteContext.run(q).provideCustomLayer(connection)
+  }
+
+  def insertPost(post: Post) = {
+    SqliteContext.run(query[Post].insert(lift(post))).provideCustomLayer(connection)
+  }
+
+  def initializeDb() = {
+    SqliteContext.executeAction(
+      """CREATE TABLE IF NOT EXISTS "POST"(
+        | link varchar NOT NULL UNIQUE,
+        | upvotes integer NOT NULL)""".stripMargin).provideCustomLayer(connection)
+  }
 }
