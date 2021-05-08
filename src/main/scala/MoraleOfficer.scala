@@ -22,8 +22,7 @@ object MoraleOfficer extends zio.App {
   override def run(args: List[String]) = (for {
     _ <- initializeDb()
     posts <- ZIO.foreachParN(10)(CatSubs.list) { sub =>
-      extract_posts(sub)
-        .zipLeft(putStrLn(s"Gathering posts from ${sub}"))
+      putStrLn(s"Gathering posts from ${sub}").zipRight(extract_posts(sub))
     }.flatMap(pp => ZIO.succeed(pp.flatten))
 
     // wow, this is not good
@@ -47,20 +46,20 @@ object MoraleOfficer extends zio.App {
       if (Desktop.isDesktopSupported && Desktop.getDesktop.isSupported(Desktop.Action.BROWSE)) {
         Desktop.getDesktop.browse(new URI(link))
       }).refineToOrDie[IOException]
-      .retry(Schedule.recurs(20) && Schedule.spaced(100.millis))
+      .retry(Schedule.recurs(30) && Schedule.spaced(150.millis))
       .orElse(putStrLn(s"Failed to open $link in browser"))
   }
 
   private def extract_posts(sub: String) = {
     val doc = Jsoup.connect(s"https://old.reddit.com/r/${sub}")
       .header("user-agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0")
-    val retryPolicy = (Schedule.spaced(100.millis) && Schedule.recurs(20)).jittered
+    val retryPolicy = (Schedule.exponential(20.millis) && Schedule.recurs(20)).jittered
 
     effectBlocking(doc.get())
       .refineToOrDie[IOException]
       .retry(retryPolicy)
       .map(posts_from_document)
-      .orElseSucceed(List.empty[Post])
+      .orElse(putStrLn(s"Couldn't get posts from ${sub}").as(List.empty[Post]))
   }
 
   private def posts_from_document(doc: Document): List[Post] = {
@@ -115,7 +114,8 @@ object MoraleOfficer extends zio.App {
     val q = quote {
       query[Post].filter(p => lift(post.link) == p.link)
     }
-    SqliteContext.run(q).provideCustomLayer(connection)
+    SqliteContext.run(q)
+      .provideCustomLayer(connection)
   }
 
   def insertPost(post: Post) = {
