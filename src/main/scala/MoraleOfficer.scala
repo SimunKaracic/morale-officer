@@ -1,6 +1,6 @@
 import ammonite.ops.home
 import com.typesafe.config.ConfigFactory
-import io.getquill.{JdbcContextConfig, SnakeCase, SqliteZioJdbcContext}
+import io.getquill.{JdbcContextConfig, Ord, SnakeCase, SqliteZioJdbcContext}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import zio.blocking.effectBlocking
@@ -11,35 +11,47 @@ import zio.{Schedule, Task, ZIO, ZLayer, ZManaged}
 import java.awt.Desktop
 import java.io.IOException
 import java.net.URI
+import java.time.LocalDateTime
 import scala.jdk.CollectionConverters.CollectionHasAsScala
 import scala.util.control.NonFatal
 
 object MoraleOfficer extends zio.App {
-  object SqliteContext extends SqliteZioJdbcContext(SnakeCase)
-
-  import SqliteContext._
 
   override def run(args: List[String]) = (for {
     _ <- initializeDb()
-    posts <- ZIO.foreachParN(10)(CatSubs.list) { sub =>
-      putStrLn(s"Gathering posts from ${sub}").zipRight(extract_posts(sub))
-    }.flatMap(pp => ZIO.succeed(pp.flatten))
-
-    // wow, this is not good
-    // I really need more practice with this
-    newPosts <- ZIO.filter(posts) { post =>
-      getPostByUrl(post)
-        .flatMap(p => ZIO.succeed(p.isEmpty))
-    }.flatMap(np => ZIO.succeed(np.sortBy(_.upvotes)(Ordering.Int.reverse).take(5)))
-
-    _ <- ZIO.foreachPar_(newPosts)(open_post)
-    _ <- putStrLn("Morale successfully officered!")
+    newPosts <- constructPostList()
+    _ <- ZIO.foreachPar_(newPosts)(update_and_open)
   } yield ()).exitCode
 
-
-  private def open_post(post: Post) = {
-    insertPost(post) *> open_in_browser(post.link)
+  private def constructPostList() = {
+    getTop5UnopenedPosts.flatMap(posts =>
+      if (posts.isEmpty || posts.length < 5) {
+        ZIO.fail(posts)
+      } else {
+        ZIO.succeed(posts)
+      })
+      .orElse(scrapeAndSave)
   }
+
+  private def scrapeAndSave = {
+    for {
+      posts <- ZIO.foreachParN(4)(CatSubs.list) { sub =>
+        putStrLn(s"Gathering posts from ${sub}").zipRight(extract_posts(sub))
+      }
+      newPosts <- ZIO.filter(posts.flatten.filter(_.upvotes > 100)) { post =>
+        getPostByUrl(post).flatMap(p => ZIO.succeed(p.isEmpty))
+      }
+      _ <- ZIO.foreach_(newPosts)(insertPost)
+    } yield newPosts.sortBy(_.upvotes)(Ordering.Int.reverse).take(5)
+  }
+
+  private def update_and_open(post: Post) = {
+    updatePostWithOpenedTime(post) *> open_in_browser(post.url)
+  }
+
+  ///////////////
+  // filthy stuff
+  ///////////////
 
   private def open_in_browser(link: String) = {
     effectBlocking(
@@ -71,10 +83,8 @@ object MoraleOfficer extends zio.App {
 
         val link = x.select("a.bylink.comments[href]").attr("href").toString
 
-        upvotesToInt(upvotes).map(Post(link, _))
+        upvotesToInt(upvotes).map(Post(link, _, LocalDateTime.now()))
       }).toList
-    // get rid of this toList
-
     posts
   }
 
@@ -90,6 +100,8 @@ object MoraleOfficer extends zio.App {
   //////////////////////////
   // DB SETTINGS AND QUERIES
   //////////////////////////
+  object SqliteContext extends SqliteZioJdbcContext(SnakeCase)
+  import SqliteContext._
 
   private val connection = {
     // config defined here because
@@ -108,24 +120,74 @@ object MoraleOfficer extends zio.App {
     } yield conn)
   }
 
-  case class Post(link: String, upvotes: Int)
-
-  def getPostByUrl(post: Post) = {
-    val q = quote {
-      query[Post].filter(p => lift(post.link) == p.link)
+  case class Post(url: String, upvotes: Int, scraped_at: LocalDateTime, opened_at: Option[LocalDateTime] = None)
+  object Post {
+    def withOpenedTime(p: Post) = {
+      Post(p.url, p.upvotes, p.scraped_at, Some(LocalDateTime.now))
     }
-    SqliteContext.run(q)
-      .provideCustomLayer(connection)
+  }
+
+
+  def getTop5UnopenedPosts: ZIO[zio.ZEnv, Throwable, List[Post]] = {
+    val q = quote {
+      query[Post]
+        .filter(_.opened_at.isEmpty)
+        .sortBy(_.upvotes)(Ord.descNullsLast)
+        .distinct.take(5)
+    }
+    SqliteContext.run(q).provideCustomLayer(connection)
+  }
+
+  def updatePostWithOpenedTime(post: Post) = {
+    val q = quote {
+      query[Post].filter(_.url == lift(post.url)).update(_.opened_at -> lift(Option(LocalDateTime.now())))
+    }
+    SqliteContext.run(q).provideCustomLayer(connection)
   }
 
   def insertPost(post: Post) = {
-    SqliteContext.run(query[Post].insert(lift(post))).provideCustomLayer(connection)
+    SqliteContext.run(query[Post].insert(lift(post)).onConflictIgnore).provideCustomLayer(connection)
+  }
+
+  def getPostByUrl(post: Post): ZIO[zio.ZEnv, Throwable, List[Post]] = {
+    val q = quote {
+      query[Post].filter(p => lift(post.url) == p.url)
+    }
+    SqliteContext.run(q).provideCustomLayer(connection)
+  }
+
+  def unopenedPosts() = {
+    val q = quote {
+      query[Post].filter(_.opened_at.isEmpty).sortBy(_.upvotes)(Ord.descNullsLast)
+    }
+    SqliteContext.run(q).provideCustomLayer(connection)
+  }
+
+  def deletePost(post: Post) = {
+    val q = quote {
+      query[Post].filter(_.url == lift(post.url)).delete
+    }
+    SqliteContext.run(q).provideCustomLayer(connection)
+  }
+
+  def deleteOldPosts(): ZIO[zio.ZEnv, Throwable, Unit] = {
+    for {
+      unOpenedPosts <- unopenedPosts()
+      deleteablePosts <- ZIO.filter(unOpenedPosts) { p =>
+        ZIO.succeed(p.opened_at.exists(_.isBefore(LocalDateTime.now().minus(8.hours))))
+      }
+      _ <- ZIO.foreach_(deleteablePosts)(deletePost)
+    } yield ()
   }
 
   def initializeDb() = {
     SqliteContext.executeAction(
       """CREATE TABLE IF NOT EXISTS "POST"(
-        | link varchar NOT NULL UNIQUE,
-        | upvotes integer NOT NULL)""".stripMargin).provideCustomLayer(connection)
+        | url varchar NOT NULL UNIQUE,
+        | upvotes integer NOT NULL,
+        | scraped_at time NOT NULL,
+        | opened_at time)""".stripMargin).provideCustomLayer(connection) *>
+      deleteOldPosts()
   }
 }
+
