@@ -18,7 +18,11 @@ object MoraleOfficer extends zio.App {
     _ <- PostContext.initializeDb()
     newPosts <- constructPostList()
     _ <- ZIO.foreachPar_(newPosts)(update_and_open)
-    _ <- putStrLn("Morale successfully officered!").delay(2.seconds)
+    _ <- if (newPosts.isEmpty) {
+      putStrLn("There are no more quality cats, please wait until more content is generated").delay(2.seconds)
+    } else {
+      putStrLn("Morale successfully officered!").delay(2.seconds)
+    }
     _ <- putStrLn("")
   } yield ()).exitCode
 
