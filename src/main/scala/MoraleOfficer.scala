@@ -32,7 +32,7 @@ object MoraleOfficer extends zio.App {
       .orElse(scrapeAndSave)
   }
 
-  private def sadPostsKeywords = List("dead", "dying", "sick", "pass", "still cute", "put down")
+  private def sadPostsKeywords = List("dead", "dying", "sick", "pass", "still cute", "put down", "some love")
   private def scrapeAndSave = {
     for {
       posts <- ZIO.foreachParN(4)(CatSubs.list) { sub =>
