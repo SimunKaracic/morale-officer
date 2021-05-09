@@ -1,12 +1,9 @@
-import ammonite.ops.home
-import com.typesafe.config.ConfigFactory
-import io.getquill.{JdbcContextConfig, Ord, SnakeCase, SqliteZioJdbcContext}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import zio.blocking.effectBlocking
 import zio.console.putStrLn
 import zio.duration.durationInt
-import zio.{Schedule, Task, ZIO, ZLayer, ZManaged}
+import zio.{Schedule, ZIO}
 
 import java.awt.Desktop
 import java.io.IOException
@@ -21,6 +18,8 @@ object MoraleOfficer extends zio.App {
     _ <- PostContext.initializeDb()
     newPosts <- constructPostList()
     _ <- ZIO.foreachPar_(newPosts)(update_and_open)
+    _ <- putStrLn("Morale successfully officered!").delay(2.seconds)
+    _ <- putStrLn("")
   } yield ()).exitCode
 
   private def constructPostList() = {
@@ -33,12 +32,17 @@ object MoraleOfficer extends zio.App {
       .orElse(scrapeAndSave)
   }
 
+  private def sadPostsKeywords = List("dead", "dying", "sick", "pass", "still cute")
   private def scrapeAndSave = {
     for {
       posts <- ZIO.foreachParN(4)(CatSubs.list) { sub =>
         putStrLn(s"Gathering posts from ${sub}").zipRight(extract_posts(sub))
       }
-      newPosts <- ZIO.filter(posts.flatten.filter(_.upvotes > 100)) { post =>
+      validPosts = posts.flatten.filter(_.upvotes > 100)
+        .filterNot(p => {
+          sadPostsKeywords.exists(p.url.contains)
+        })
+      newPosts <- ZIO.filter(validPosts) { post =>
         PostContext.getPostByUrl(post).flatMap(p => ZIO.succeed(p.isEmpty))
       }
       _ <- ZIO.foreach_(newPosts)(PostContext.insertPost)
@@ -54,12 +58,13 @@ object MoraleOfficer extends zio.App {
   ///////////////
 
   private def open_in_browser(link: String) = {
+    val url = link.replace("/old.", "")
     effectBlocking(
       if (Desktop.isDesktopSupported && Desktop.getDesktop.isSupported(Desktop.Action.BROWSE)) {
-        Desktop.getDesktop.browse(new URI(link))
+        Desktop.getDesktop.browse(new URI(url))
       }).refineToOrDie[IOException]
       .retry(Schedule.recurs(30) && Schedule.spaced(150.millis))
-      .orElse(putStrLn(s"Failed to open $link in browser"))
+      .orElse(putStrLn(s"Failed to open $url in browser"))
   }
 
   private def extract_posts(sub: String) = {
@@ -96,7 +101,9 @@ object MoraleOfficer extends zio.App {
         None
     }
   }
+
   case class Post(url: String, upvotes: Int, scraped_at: LocalDateTime, opened_at: Option[LocalDateTime] = None)
+
   object Post {
     def withOpenedTime(p: Post) = {
       Post(p.url, p.upvotes, p.scraped_at, Some(LocalDateTime.now))

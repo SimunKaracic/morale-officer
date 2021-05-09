@@ -53,21 +53,23 @@ object PostContext extends SqliteZioJdbcContext(SnakeCase) {
     this.run(q).provideCustomLayer(connection)
   }
 
-  def unopenedPosts() = {
+  private def unopenedPosts() = {
     val q = quote {
       query[Post].filter(_.opened_at.isEmpty).sortBy(_.upvotes)(Ord.descNullsLast)
     }
     this.run(q).provideCustomLayer(connection)
   }
 
-  def deletePost(post: Post) = {
+  private def deletePost(post: Post) = {
     val q = quote {
       query[Post].filter(_.url == lift(post.url)).delete
     }
     this.run(q).provideCustomLayer(connection)
   }
 
-  def deleteOldPosts() = {
+  private def deleteOldPosts() = {
+    // filtering done in Scala because it
+    // is horrible in Quill queries
     for {
       unOpenedPosts <- unopenedPosts()
       deleteablePosts <- ZIO.filter(unOpenedPosts) { p =>
