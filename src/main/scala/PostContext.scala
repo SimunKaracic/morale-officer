@@ -1,4 +1,3 @@
-import MoraleOfficer.Post
 import ammonite.ops.home
 import com.typesafe.config.ConfigFactory
 import io.getquill.{JdbcContextConfig, Ord, SnakeCase, SqliteZioJdbcContext}
@@ -6,6 +5,14 @@ import zio.duration.durationInt
 import zio.{Task, ZIO, ZLayer, ZManaged}
 
 import java.time.LocalDateTime
+
+case class Post(url: String, upvotes: Int, scraped_at: LocalDateTime, opened_at: Option[LocalDateTime] = None)
+
+object Post {
+  def withOpenedTime(p: Post): Post = {
+    Post(p.url, p.upvotes, p.scraped_at, Some(LocalDateTime.now))
+  }
+}
 
 object PostContext extends SqliteZioJdbcContext(SnakeCase) {
   private val connection = {
@@ -25,7 +32,7 @@ object PostContext extends SqliteZioJdbcContext(SnakeCase) {
     } yield conn)
   }
 
-  def getTop5UnopenedPosts = {
+  def getTop5UnopenedPosts: ZIO[zio.ZEnv, Throwable, List[Post]] = {
     val q = quote {
       query[Post]
         .filter(_.opened_at.isEmpty)
@@ -35,18 +42,18 @@ object PostContext extends SqliteZioJdbcContext(SnakeCase) {
     this.run(q).provideCustomLayer(connection)
   }
 
-  def updatePostWithOpenedTime(post: Post) = {
+  def updatePostWithOpenedTime(post: Post): ZIO[zio.ZEnv, Throwable, Long] = {
     val q = quote {
       query[Post].filter(_.url == lift(post.url)).update(_.opened_at -> lift(Option(LocalDateTime.now())))
     }
     this.run(q).provideCustomLayer(connection)
   }
 
-  def insertPost(post: Post) = {
+  def insertPost(post: Post): ZIO[zio.ZEnv, Throwable, Long] = {
     this.run(query[Post].insert(lift(post)).onConflictIgnore).provideCustomLayer(connection)
   }
 
-  def getPostByUrl(post: Post) = {
+  def getPostByUrl(post: Post): ZIO[zio.ZEnv, Throwable, List[Post]] = {
     val q = quote {
       query[Post].filter(p => lift(post.url) == p.url)
     }
@@ -72,10 +79,10 @@ object PostContext extends SqliteZioJdbcContext(SnakeCase) {
     // is horrible in Quill queries
     for {
       unOpenedPosts <- unopenedPosts()
-      deleteablePosts <- ZIO.filter(unOpenedPosts) { p =>
+      deletablePosts <- ZIO.filter(unOpenedPosts) { p =>
         ZIO.succeed(p.opened_at.exists(_.isBefore(LocalDateTime.now().minus(8.hours))))
       }
-      _ <- ZIO.foreach_(deleteablePosts)(deletePost)
+      _ <- ZIO.foreach_(deletablePosts)(deletePost)
     } yield ()
   }
 
