@@ -32,13 +32,13 @@ object MoraleOfficer extends zio.App {
       .orElse(scrapeAndSave)
   }
 
-  private def sadPostsKeywords = List("dead", "dying", "sick", "pass", "still_cute", "put_down", "some_love")
+  private def sadPostsKeywords = List("dead", "dying", "mourning", "sick", "pass", "still_cute", "put_down", "some_love")
   private def scrapeAndSave = {
     for {
       posts <- ZIO.foreachParN(4)(CatSubs.list) { sub =>
         putStrLn(s"Gathering posts from ${sub}").zipRight(extract_posts(sub))
       }
-      validPosts = posts.flatten.filter(_.upvotes > 100)
+      validPosts = posts.flatten.filter(_.upvotes > 300)
         .filterNot(p => {
           sadPostsKeywords.exists(p.url.contains)
         })
