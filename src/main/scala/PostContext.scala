@@ -80,7 +80,7 @@ object PostContext extends SqliteZioJdbcContext(SnakeCase) {
     for {
       unOpenedPosts <- unopenedPosts()
       deletablePosts <- ZIO.filter(unOpenedPosts) { p =>
-        ZIO.succeed(p.opened_at.exists(_.isBefore(LocalDateTime.now().minus(8.hours))))
+        ZIO.succeed(p.scraped_at.isBefore(LocalDateTime.now().minus(8.hours)))
       }
       _ <- ZIO.foreach_(deletablePosts)(deletePost)
     } yield ()

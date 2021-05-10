@@ -12,7 +12,6 @@ import scala.jdk.CollectionConverters.CollectionHasAsScala
 
 object ScrapingService {
   private def sadPostsKeywords = List("dead", "dying", "mourning", "sick", "pass", "still_cute", "put_down", "some_love")
-
   def scrapeAndSave = {
     for {
       posts <- ZIO.foreachParN(4)(CatSubs.list) { sub =>
