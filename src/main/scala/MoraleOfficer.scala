@@ -23,7 +23,7 @@ object MoraleOfficer extends zio.App {
       } else {
         ZIO.succeed(posts)
       })
-      .orElse(ScrapingService.scrapeAndSave)
+      .orElse(ScrapingService.fetchNewPosts *> PostContext.getTop5UnopenedPosts)
   }
 
   private def update_and_open(post: Post) = {

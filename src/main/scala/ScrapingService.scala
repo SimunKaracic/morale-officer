@@ -6,38 +6,55 @@ import zio.duration.durationInt
 import zio.{Schedule, ZIO}
 
 import java.io.IOException
-import scala.util.control.NonFatal
 import java.time.LocalDateTime
 import scala.jdk.CollectionConverters.CollectionHasAsScala
+import scala.util.chaining.scalaUtilChainingOps
+import scala.util.control.NonFatal
 
 object ScrapingService {
-  private def sadPostsKeywords = List("dead", "dying", "mourning", "sick", "pass", "still_cute", "put_down", "some_love")
-  def scrapeAndSave = {
+  def fetchNewPosts = {
     for {
       posts <- ZIO.foreachParN(4)(CatSubs.list) { sub =>
         putStrLn(s"Gathering posts from ${sub}").zipRight(extract_posts(sub))
+      }.flatMap(x => ZIO.succeed(x.flatten))
+
+      newPosts <- ZIO.filter(posts) { post =>
+        PostContext.getPostByUrl(post)
+          .flatMap(p => ZIO.succeed(p.isEmpty))
       }
-      validPosts = posts.flatten.filter(_.upvotes > 300)
-        .filterNot(p => {
-          sadPostsKeywords.exists(p.url.contains)
-        })
-      newPosts <- ZIO.filter(validPosts) { post =>
-        PostContext.getPostByUrl(post).flatMap(p => ZIO.succeed(p.isEmpty))
-      }
-      _ <- ZIO.foreach_(newPosts)(PostContext.insertPost)
-    } yield newPosts.sortBy(_.upvotes)(Ordering.Int.reverse).take(5)
+      _ <- PostContext.insertPosts(newPosts)
+    } yield newPosts
   }
+
+  private def sadPostKeywords = List(
+    "dead", "mangy", "dying",
+    "mourning", "sick",
+    "disabled",
+  )
+
+  private def sadPostPhrases = List(
+    "still cute", "put down", "some love",
+    "antibiotics",
+  )
 
   private def posts_from_document(doc: Document): List[Post] = {
     val posts = doc.getElementsByClass("thing").asScala
-      .flatMap(x => {
-        val upvotes = x.select("div.score.unvoted").text()
+      .flatMap(element => {
+        val title = element.select(".title").text()
+        val link = element.select("a.bylink.comments[href]").attr("href").toString
+        val upvotes = element.select("div.score.unvoted").text()
           .replace(".", "")
           .replace("k", "000")
+          .pipe(upvotesToInt)
 
-        val link = x.select("a.bylink.comments[href]").attr("href").toString
-
-        upvotesToInt(upvotes).map(Post(link, _, LocalDateTime.now()))
+        val titleWords = title.split(" ")
+        if (sadPostPhrases.exists(title.contains)
+          || titleWords.intersect(sadPostKeywords).nonEmpty
+          || upvotes.exists(_ < 300)) {
+          None
+        } else {
+          upvotes.map(Post(link, _, LocalDateTime.now()))
+        }
       }).toList
     posts
   }

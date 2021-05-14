@@ -7,13 +7,6 @@ import zio.{Task, ZIO, ZLayer, ZManaged}
 import java.time.LocalDateTime
 
 case class Post(url: String, upvotes: Int, scraped_at: LocalDateTime, opened_at: Option[LocalDateTime] = None)
-
-object Post {
-  def withOpenedTime(p: Post): Post = {
-    Post(p.url, p.upvotes, p.scraped_at, Some(LocalDateTime.now))
-  }
-}
-
 object PostContext extends SqliteZioJdbcContext(SnakeCase) {
   private val connection = {
     // config defined here because
@@ -49,15 +42,17 @@ object PostContext extends SqliteZioJdbcContext(SnakeCase) {
     this.run(q).provideCustomLayer(connection)
   }
 
-  def insertPost(post: Post): ZIO[zio.ZEnv, Throwable, Long] = {
-    this.run(query[Post].insert(lift(post)).onConflictIgnore).provideCustomLayer(connection)
-  }
 
   def getPostByUrl(post: Post): ZIO[zio.ZEnv, Throwable, List[Post]] = {
     val q = quote {
       query[Post].filter(p => lift(post.url) == p.url)
     }
     this.run(q).provideCustomLayer(connection)
+  }
+
+  def insertPosts(posts: List[Post]) = {
+    this.run(liftQuery(posts).foreach(p => query[Post].insert(p).onConflictIgnore))
+      .provideCustomLayer(connection)
   }
 
   private def unopenedPosts() = {
@@ -67,22 +62,19 @@ object PostContext extends SqliteZioJdbcContext(SnakeCase) {
     this.run(q).provideCustomLayer(connection)
   }
 
-  private def deletePost(post: Post) = {
-    val q = quote {
-      query[Post].filter(_.url == lift(post.url)).delete
-    }
-    this.run(q).provideCustomLayer(connection)
+  private def deletePosts(posts: List[Post]) = {
+    this.run(liftQuery(posts).foreach(p => query[Post].filter(_.url == p.url).delete))
+      .provideCustomLayer(connection)
   }
 
-  private def deleteOldPosts() = {
-    // filtering done in Scala because it
-    // is horrible in Quill queries
+  // now that's a type signature
+  private def deleteOldUnopenedPosts(someTimeAgo: LocalDateTime = LocalDateTime.now().minus(8.hours)) = {
     for {
       unOpenedPosts <- unopenedPosts()
       deletablePosts <- ZIO.filter(unOpenedPosts) { p =>
-        ZIO.succeed(p.scraped_at.isBefore(LocalDateTime.now().minus(8.hours)))
+        ZIO.succeed(p.scraped_at.isBefore(someTimeAgo))
       }
-      _ <- ZIO.foreach_(deletablePosts)(deletePost)
+      _ <- deletePosts(deletablePosts)
     } yield ()
   }
 
@@ -93,6 +85,6 @@ object PostContext extends SqliteZioJdbcContext(SnakeCase) {
         | upvotes integer NOT NULL,
         | scraped_at time NOT NULL,
         | opened_at time)""".stripMargin).provideCustomLayer(connection) *>
-      deleteOldPosts()
+      deleteOldUnopenedPosts()
   }
 }
