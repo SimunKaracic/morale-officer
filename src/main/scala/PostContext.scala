@@ -35,6 +35,7 @@ object PostContext extends SqliteZioJdbcContext(SnakeCase) {
     this.run(q).provideCustomLayer(connection)
   }
 
+  // still gotta bulkify this
   def updatePostWithOpenedTime(post: Post): ZIO[zio.ZEnv, Throwable, Long] = {
     val q = quote {
       query[Post].filter(_.url == lift(post.url)).update(_.opened_at -> lift(Option(LocalDateTime.now())))

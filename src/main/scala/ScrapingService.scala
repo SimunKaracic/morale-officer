@@ -26,6 +26,10 @@ object ScrapingService {
     } yield newPosts
   }
 
+  // sadpost filtering is getting out of hand
+  // it should be it's own service, and as I find titles
+  // i should add them to a test
+  // first, write some tests i guess
   private def sadPostKeywords = List(
     "dead", "mangy", "dying",
     "mourning", "sick",
