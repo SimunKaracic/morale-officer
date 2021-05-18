@@ -20,7 +20,6 @@ object CatSubs {
     "TuckedInKitties",
     "straightenedfeetsies",
     "SneezingCats",
-    "BabyBigCatGifs",
     "bottlebrush",
     "catswhotrill",
     "TheCatTrapIsWorking",

@@ -33,25 +33,29 @@ object ScrapingService {
   private def sadPostKeywords = List(
     "dead", "mangy", "dying",
     "mourning", "sick",
-    "disabled",
-  )
+    "disabled", "tumor", "RIP",
+    "cancer",
+  ).map(_.toLowerCase)
 
   private def sadPostPhrases = List(
     "still cute", "put down", "some love",
-    "antibiotics",
-  )
+    "antibiotics", "rainbow bridge",
+    "positive vibes", "passed away",
+    "urinary blockage",
+  ).map(_.toLowerCase)
 
   private def posts_from_document(doc: Document): List[Post] = {
+    // maybe i wanna track which ones were filtered out by sadposting
     val posts = doc.getElementsByClass("thing").asScala
       .flatMap(element => {
-        val title = element.select(".title").text()
+        val title = element.select(".title").text().toLowerCase
         val link = element.select("a.bylink.comments[href]").attr("href").toString
         val upvotes = element.select("div.score.unvoted").text()
           .replace(".", "")
           .replace("k", "000")
           .pipe(upvotesToInt)
 
-        val titleWords = title.split(" ")
+        val titleWords = title.split(" ").map(_.toLowerCase)
         if (sadPostPhrases.exists(title.contains)
           || titleWords.intersect(sadPostKeywords).nonEmpty
           || upvotes.exists(_ < 300)) {
