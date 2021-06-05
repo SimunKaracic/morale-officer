@@ -1,3 +1,4 @@
+import model.{Post, PostContext}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import zio.blocking.effectBlocking
@@ -34,7 +35,7 @@ object ScrapingService {
     "dead", "mangy", "dying",
     "mourning", "sick",
     "disabled", "tumor", "RIP",
-    "cancer", "R.I.P",
+    "cancer", "R.I.P", "prayers",
   ).map(_.toLowerCase)
 
   private def sadPostPhrases = List(
@@ -44,7 +45,7 @@ object ScrapingService {
     "urinary blockage", "one last time",
     "I miss him more than anything", "R.I.P",
     "in your prayers", "hit by a truck",
-    "hip dysplasia", "has"
+    "hip dysplasia",
   ).map(_.toLowerCase)
 
   private def posts_from_document(doc: Document): List[Post] = {

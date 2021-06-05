@@ -1,11 +1,13 @@
+import model.{DbContext, Post, PostContext}
 import zio.ZIO
 import zio.console.putStrLn
 import zio.duration.durationInt
+import zio.magic._
 
 object MoraleOfficer extends zio.App {
 
-  override def run(args: List[String]) = (for {
-    _ <- PostContext.initializeDb()
+  val program = for {
+    _ <- DbContext.initializeDb()
     newPosts <- constructPostList()
     _ <- ZIO.foreachPar_(newPosts)(update_and_open)
     _ <- if (newPosts.isEmpty) {
@@ -14,7 +16,11 @@ object MoraleOfficer extends zio.App {
       putStrLn("Morale successfully officered!").delay(2.seconds)
     }
     _ <- putStrLn("")
-  } yield ()).exitCode
+  } yield ()
+
+  override def run(args: List[String]) = program
+    .injectCustom(DbContext.live)
+    .exitCode
 
   private def constructPostList() = {
     PostContext.getTop5UnopenedPosts.flatMap(posts =>
@@ -30,4 +36,3 @@ object MoraleOfficer extends zio.App {
     PostContext.updatePostWithOpenedTime(post) *> BrowserService.open(post.url)
   }
 }
-
