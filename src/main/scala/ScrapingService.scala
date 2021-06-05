@@ -34,14 +34,17 @@ object ScrapingService {
     "dead", "mangy", "dying",
     "mourning", "sick",
     "disabled", "tumor", "RIP",
-    "cancer",
+    "cancer", "R.I.P",
   ).map(_.toLowerCase)
 
   private def sadPostPhrases = List(
     "still cute", "put down", "some love",
     "antibiotics", "rainbow bridge",
     "positive vibes", "passed away",
-    "urinary blockage",
+    "urinary blockage", "one last time",
+    "I miss him more than anything", "R.I.P",
+    "in your prayers", "hit by a truck",
+    "hip dysplasia", "has"
   ).map(_.toLowerCase)
 
   private def posts_from_document(doc: Document): List[Post] = {
