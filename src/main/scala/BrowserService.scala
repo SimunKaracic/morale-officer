@@ -19,4 +19,6 @@ object BrowserService {
       .retry(Schedule.recurs(30) && Schedule.spaced(150.millis))
       .orElse(putStrLn(s"Failed to open $url in browser"))
   }
+
+
 }

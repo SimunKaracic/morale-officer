@@ -23,13 +23,13 @@ object MoraleOfficer extends zio.App {
     .exitCode
 
   private def constructPostList() = {
-    PostContext.getTop5UnopenedPosts.flatMap(posts =>
+    PostContext.getTop10UnopenedPosts.flatMap(posts =>
       if (posts.isEmpty || posts.length < 5) {
         ZIO.fail(posts)
       } else {
         ZIO.succeed(posts)
       })
-      .orElse(ScrapingService.fetchNewPosts *> PostContext.getTop5UnopenedPosts)
+      .orElse(ScrapingService.fetchNewPosts *> PostContext.getTop10UnopenedPosts)
   }
 
   private def update_and_open(post: Post) = {

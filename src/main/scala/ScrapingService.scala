@@ -15,7 +15,7 @@ import scala.util.control.NonFatal
 object ScrapingService {
   def fetchNewPosts = {
     for {
-      posts <- ZIO.foreachParN(4)(CatSubs.list) { sub =>
+      posts <- ZIO.foreachPar(CatSubs.list) { sub =>
         putStrLn(s"Gathering posts from ${sub}").zipRight(extract_posts(sub))
       }.flatMap(x => ZIO.succeed(x.flatten))
 
@@ -35,17 +35,19 @@ object ScrapingService {
     "dead", "mangy", "dying",
     "mourning", "sick",
     "disabled", "tumor", "RIP",
-    "cancer", "R.I.P", "prayers",
+    "cancer", "R.I.P", "prayers", "FIV",
+    "antibiotics",
   ).map(_.toLowerCase)
 
   private def sadPostPhrases = List(
     "still cute", "put down", "some love",
-    "antibiotics", "rainbow bridge",
-    "positive vibes", "passed away",
+    "rainbow bridge", "positive vibes", "passed away",
     "urinary blockage", "one last time",
     "I miss him more than anything", "R.I.P",
     "in your prayers", "hit by a truck",
-    "hip dysplasia",
+    "hip dysplasia", "lost his battle",
+    "lost her battle", "lost my baby boy",
+    "preventable disease", "rest in peace"
   ).map(_.toLowerCase)
 
   private def posts_from_document(doc: Document): List[Post] = {

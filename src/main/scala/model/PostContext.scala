@@ -14,12 +14,12 @@ case class Post(url: String, upvotes: Int,
                 scraped_at: LocalDateTime,
                 opened_at: Option[LocalDateTime] = None)
 object PostContext extends SqliteZioJdbcContext(SnakeCase) {
-  def getTop5UnopenedPosts: ZIO[Has[Connection] with Blocking, SQLException, List[Post]] = {
+  def getTop10UnopenedPosts: ZIO[Has[Connection] with Blocking, SQLException, List[Post]] = {
     val q = quote {
       query[Post]
         .filter(_.opened_at.isEmpty)
         .sortBy(_.upvotes)(Ord.descNullsLast)
-        .distinct.take(5)
+        .distinct.take(10)
     }
     this.run(q)
   }
