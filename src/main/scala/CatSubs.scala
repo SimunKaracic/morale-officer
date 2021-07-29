@@ -6,7 +6,6 @@ object CatSubs {
     "Meow_Irl",
     "Blep",
     "CatGifs",
-    "Cats",
     "DelightfullyChubby",
     "CatBellies",
     "CatsStandingUp",
@@ -24,5 +23,6 @@ object CatSubs {
     "catswhotrill",
     "TheCatTrapIsWorking",
     "CatsISUOTTATFO",
+    "notmycat",
   )
 }

@@ -29,6 +29,7 @@ object DbContext extends SqliteZioJdbcContext(SnakeCase) {
     this.executeAction(
       """CREATE TABLE IF NOT EXISTS "POST"(
         | url varchar NOT NULL UNIQUE,
+        | subreddit varchar NOT NULL,
         | upvotes integer NOT NULL,
         | scraped_at time NOT NULL,
         | opened_at time)""".stripMargin) *>

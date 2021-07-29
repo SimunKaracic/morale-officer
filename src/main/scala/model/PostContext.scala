@@ -10,8 +10,8 @@ import zio.{Has, Task, ZIO, ZLayer, ZManaged}
 import java.sql.{Connection, SQLException}
 import java.time.LocalDateTime
 
-case class Post(url: String, upvotes: Int,
-                scraped_at: LocalDateTime,
+case class Post(url: String, subreddit: String,
+                upvotes: Int, scraped_at: LocalDateTime,
                 opened_at: Option[LocalDateTime] = None)
 object PostContext extends SqliteZioJdbcContext(SnakeCase) {
   def getTop10UnopenedPosts: ZIO[Has[Connection] with Blocking, SQLException, List[Post]] = {

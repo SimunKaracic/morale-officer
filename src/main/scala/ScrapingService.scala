@@ -47,7 +47,8 @@ object ScrapingService {
     "in your prayers", "hit by a truck",
     "hip dysplasia", "lost his battle",
     "lost her battle", "lost my baby boy",
-    "preventable disease", "rest in peace"
+    "preventable disease", "rest in peace",
+    "lost my best friend",
   ).map(_.toLowerCase)
 
   private def posts_from_document(doc: Document): List[Post] = {
@@ -56,6 +57,13 @@ object ScrapingService {
       .flatMap(element => {
         val title = element.select(".title").text().toLowerCase
         val link = element.select("a.bylink.comments[href]").attr("href").toString
+        println(s"TITLE IS ${title}")
+        println(s"LINK IS ${link}")
+        // i might get some dumb ass links
+        // like ads
+        // how tf do I filter them out earlier?
+//        val subreddit = link.split("/")(2)
+//        println(subreddit)
         val upvotes = element.select("div.score.unvoted").text()
           .replace(".", "")
           .replace("k", "000")
@@ -67,7 +75,8 @@ object ScrapingService {
           || upvotes.exists(_ < 300)) {
           None
         } else {
-          upvotes.map(Post(link, _, LocalDateTime.now()))
+            // extract subreddit here
+            upvotes.map(Post(link,link,  _, LocalDateTime.now()))
         }
       }).toList
     posts
