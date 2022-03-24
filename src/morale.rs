@@ -12,7 +12,8 @@ pub fn run_morale_officer() {
         println!("No cats found locally! Scraping...");
         scrape_new_morale();
         open_posts(get_existing_posts())
-    } else if count_unopened_posts() < 21 {
+        // instead of raising the number, make sure you scrape atleast once per day
+    } else if count_unopened_posts() < 300 {
         open_posts(existing_posts);
         scrape_new_morale();
     } else {
