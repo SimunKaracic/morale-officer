@@ -6,11 +6,11 @@ scalaVersion := "2.13.4"
 
 val zioMagicVersion = "0.3.2"
 libraryDependencies ++= Seq(
-  "org.jsoup" % "jsoup" % "1.13.1",
-  "dev.zio" %% "zio" % "1.0.7",
-  "dev.zio" %% "zio-streams" % "1.0.7",
-  "com.lihaoyi" %% "ammonite-ops" % "2.3.8",
-  "org.xerial" % "sqlite-jdbc" % "3.28.0",
-  "io.github.kitlangton" %% "zio-magic" % zioMagicVersion,
-  "io.getquill" %% "quill-jdbc-zio" % "3.7.1"
+  "org.jsoup" % "jsoup" % "1.14.3",
+  "dev.zio" %% "zio" % "2.0.0",
+  "dev.zio" %% "zio-streams" % "2.0.0",
+  "com.lihaoyi" %% "ammonite-ops" % "2.4.1",
+  "org.xerial" % "sqlite-jdbc" % "3.36.0.3",
+  "io.getquill" %% "quill-jdbc-zio" % "4.0.0",
+//  "io.github.kitlangton" %% "zio-tui" % "0.1.2"
 )

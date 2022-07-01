@@ -1,10 +1,8 @@
 import model.{Post, PostContext}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
-import zio.blocking.effectBlocking
-import zio.console.putStrLn
-import zio.duration.durationInt
-import zio.{Schedule, ZIO}
+import zio.Console.printLine
+import zio.{Schedule, ZIO, durationInt}
 
 import java.io.IOException
 import java.time.LocalDateTime
@@ -15,8 +13,14 @@ import scala.util.control.NonFatal
 object ScrapingService {
   def fetchNewPosts = {
     for {
-      posts <- ZIO.foreachPar(CatSubs.list) { sub =>
-        putStrLn(s"Gathering posts from ${sub}").zipRight(extract_posts(sub))
+      _ <- printLine("getting new posts")
+      posts <- ZIO.foreachPar(CatSubs.list) { sub => {
+        for {
+          _ <- printLine("seinding request")
+          document <- getHtml(sub)
+          _ <- printLine(s"got response")
+        } yield posts_from_document(document, sub)
+      }
       }.flatMap(x => ZIO.succeed(x.flatten))
 
       newPosts <- ZIO.filter(posts) { post =>
@@ -27,79 +31,40 @@ object ScrapingService {
     } yield newPosts
   }
 
-  // sadpost filtering is getting out of hand
-  // it should be it's own service, and as I find titles
-  // i should add them to a test
-  // first, write some tests i guess
-  private def sadPostKeywords = List(
-    "dead", "mangy", "dying",
-    "mourning", "sick",
-    "disabled", "tumor", "RIP",
-    "cancer", "R.I.P", "prayers", "FIV",
-    "antibiotics",
-  ).map(_.toLowerCase)
-
-  private def sadPostPhrases = List(
-    "still cute", "put down", "some love",
-    "rainbow bridge", "positive vibes", "passed away",
-    "urinary blockage", "one last time",
-    "I miss him more than anything", "R.I.P",
-    "in your prayers", "hit by a truck",
-    "hip dysplasia", "lost his battle",
-    "lost her battle", "lost my baby boy",
-    "preventable disease", "rest in peace",
-    "lost my best friend",
-  ).map(_.toLowerCase)
-
-  private def posts_from_document(doc: Document): List[Post] = {
-    // maybe i wanna track which ones were filtered out by sadposting
-    val posts = doc.getElementsByClass("thing").asScala
+  private def posts_from_document(document: Document, subreddit: String): List[Post] = {
+    val posts = document.getElementsByClass("thing").asScala
       .flatMap(element => {
         val title = element.select(".title").text().toLowerCase
-        val link = element.select("a.bylink.comments[href]").attr("href").toString
-        println(s"TITLE IS ${title}")
-        println(s"LINK IS ${link}")
-        // i might get some dumb ass links
-        // like ads
-        // how tf do I filter them out earlier?
-//        val subreddit = link.split("/")(2)
-//        println(subreddit)
+        val link = element.select("a.bylink.comments[href]").attr("href")
         val upvotes = element.select("div.score.unvoted").text()
           .replace(".", "")
           .replace("k", "000")
           .pipe(upvotesToInt)
 
-        val titleWords = title.split(" ").map(_.toLowerCase)
-        if (sadPostPhrases.exists(title.contains)
-          || titleWords.intersect(sadPostKeywords).nonEmpty
-          || upvotes.exists(_ < 300)) {
+        if (upvotes.exists(_ < 300)) {
           None
         } else {
-            // extract subreddit here
-            upvotes.map(Post(link,link,  _, LocalDateTime.now()))
+          upvotes.map(Post(link, subreddit, title, _, LocalDateTime.now()))
         }
       }).toList
     posts
-  }
-
-  private def extract_posts(sub: String) = {
-    val doc = Jsoup.connect(s"https://old.reddit.com/r/${sub}")
-      .header("user-agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0")
-    val retryPolicy = (Schedule.exponential(20.millis) && Schedule.recurs(20)).jittered
-
-    effectBlocking(doc.get())
-      .refineToOrDie[IOException]
-      .retry(retryPolicy)
-      .map(posts_from_document)
-      .orElse(putStrLn(s"Couldn't get posts from ${sub}").as(List.empty[Post]))
   }
 
   private def upvotesToInt(s: String): Option[Int] = {
     try {
       Some(s.toInt)
     } catch {
-      case NonFatal(e) =>
+      case NonFatal(_e) =>
         None
     }
+  }
+  private def getHtml(sub: String) = {
+    val soup = Jsoup.connect(s"https://old.reddit.com/r/${sub}")
+      .header("user-agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0")
+    val retryPolicy = (Schedule.exponential(20.millis) && Schedule.recurs(20)).jittered
+
+    ZIO.blocking(ZIO.attempt(soup.get()))
+      .refineToOrDie[IOException]
+      .retry(retryPolicy)
   }
 }

@@ -2,37 +2,33 @@ package model
 
 import ammonite.ops.home
 import com.typesafe.config.ConfigFactory
+import io.getquill.context.ExecutionInfo
+import io.getquill.context.ZioJdbc.DataSourceLayer
 import io.getquill.{JdbcContextConfig, SnakeCase, SqliteZioJdbcContext}
-import zio.{Has, Task, ZLayer, ZManaged}
+import zio.ZLayer
 
 import java.sql.Connection
 
-object DbContext extends SqliteZioJdbcContext(SnakeCase) {
-  val live: ZLayer[Any, Throwable, Has[Connection]] = {
-    // config defined here because
-    // i cant figure out relative file paths in the conf
-    val conf = ConfigFactory.parseString(
+// rename this since it's a refactor leftover?
+object DbContext {
+  lazy val ctx = new SqliteZioJdbcContext(SnakeCase)
+  lazy val layer =
+    DataSourceLayer.fromConfig(ConfigFactory.parseString(
       s"""
-         | db {
-         |   driverClassName=org.sqlite.JDBC
-         |   jdbcUrl="jdbc:sqlite:${home}/.neelix.db"
-         | }
-    """.stripMargin)
-
-    ZLayer.fromManaged(for {
-      ds <- ZManaged.fromAutoCloseable(Task(JdbcContextConfig(conf.getConfig("db")).dataSource))
-      conn <- ZManaged.fromAutoCloseable(Task(ds.getConnection))
-    } yield conn)
-  }
+         |driverClassName=org.sqlite.JDBC
+         |jdbcUrl="jdbc:sqlite:${home}/.neelix.db"
+         |""".stripMargin
+    ))
 
   def initializeDb() = {
-    this.executeAction(
+    ctx.executeAction(
       """CREATE TABLE IF NOT EXISTS "POST"(
         | url varchar NOT NULL UNIQUE,
         | subreddit varchar NOT NULL,
+        | title varchar NOT NULL,
         | upvotes integer NOT NULL,
         | scraped_at time NOT NULL,
-        | opened_at time)""".stripMargin) *>
+        | opened_at time)""".stripMargin)(ExecutionInfo.unknown, ()) *>
       PostContext.deleteOldUnopenedPosts()
   }
 }
