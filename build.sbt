@@ -12,5 +12,7 @@ libraryDependencies ++= Seq(
   "com.lihaoyi" %% "ammonite-ops" % "2.4.1",
   "org.xerial" % "sqlite-jdbc" % "3.36.0.3",
   "io.getquill" %% "quill-jdbc-zio" % "4.0.0",
-//  "io.github.kitlangton" %% "zio-tui" % "0.1.2"
+  "io.github.kitlangton" %% "zio-tui" % "0.1.2",
+  "dev.zio" %% "zio-logging-slf4j" % "2.0.0",
+  "org.slf4j" % "slf4j-simple" % "1.7.36"
 )

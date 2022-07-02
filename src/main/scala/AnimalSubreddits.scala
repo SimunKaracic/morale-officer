@@ -1,4 +1,4 @@
-object CatSubs {
+object AnimalSubreddits {
 
   val list = List(
     "Floof",
@@ -12,6 +12,7 @@ object CatSubs {
     "GeometricCats",
     "SuspiciousKitties",
     "BigCats",
+    "StartledCats",
     "IllegallySmolCats",
     "CatsSittingDown",
     "thecatdimension",
@@ -23,6 +24,6 @@ object CatSubs {
     "TheCatTrapIsWorking",
     "CatsISUOTTATFO",
     "animalsbeingderps",
-    "notmycat",
+    "notmycat"
   )
 }
