@@ -1,3 +1,5 @@
+package data
+
 object AnimalSubreddits {
 
   val list = List(
@@ -15,15 +17,15 @@ object AnimalSubreddits {
     "StartledCats",
     "IllegallySmolCats",
     "CatsSittingDown",
-    "thecatdimension",
+    "TheCatDimension",
     "TuckedInKitties",
-    "straightenedfeetsies",
+    "StraightenedFeetsies",
     "SneezingCats",
-    "bottlebrush",
-    "catswhotrill",
+    "BottleBrush",
+    "CatsWhoTrill",
     "TheCatTrapIsWorking",
     "CatsISUOTTATFO",
-    "animalsbeingderps",
-    "notmycat"
+    "AnimalsBeingDerps",
+    "NotMyCat"
   )
 }

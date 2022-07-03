@@ -1,19 +1,13 @@
-import io.getquill.Ord
+package services
+
+import data.Post
 import zio.ZLayer
 
 import java.time.LocalDateTime
 
-case class Post(
-  url: String,
-  subreddit: String,
-  title: String,
-  upvotes: Int,
-  scraped_at: LocalDateTime,
-  opened_at: Option[LocalDateTime] = None
-)
+
 
 case class PostService() {
-
   import SqliteService.ctx._
 
   def getUnopenedPostCounts = {
@@ -32,7 +26,6 @@ case class PostService() {
       query[Post]
         .filter(_.opened_at.isEmpty)
         .filter(post => liftQuery(subreddits).contains(post.subreddit))
-        .sortBy(_.upvotes)(Ord.descNullsLast)
         .distinct
         .take(10)
     }
@@ -42,13 +35,6 @@ case class PostService() {
   def updatePostWithOpenedTime(post: Post) = {
     val q = quote {
       query[Post].filter(_.url == lift(post.url)).update(_.opened_at -> lift(Option(LocalDateTime.now())))
-    }
-    run(q).provide(SqliteService.live)
-  }
-
-  def getPostByUrl(post: Post) = {
-    val q = quote {
-      query[Post].filter(p => lift(post.url) == p.url)
     }
     run(q).provide(SqliteService.live)
   }

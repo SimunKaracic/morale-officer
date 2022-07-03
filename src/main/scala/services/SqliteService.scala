@@ -1,10 +1,11 @@
+package services
+
 import ammonite.ops.home
 import com.typesafe.config.ConfigFactory
 import io.getquill.context.ExecutionInfo
 import io.getquill.context.ZioJdbc.{DataSourceLayer, QIO}
 import io.getquill.{SnakeCase, SqliteZioJdbcContext}
 
-// rename this since it's a refactor leftover?
 object SqliteService {
   lazy val ctx = new SqliteZioJdbcContext(SnakeCase)
   lazy val live =

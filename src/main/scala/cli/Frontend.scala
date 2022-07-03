@@ -1,47 +1,46 @@
+package cli
+
+import data.UnopenedPostsForSubreddit
+import messages._
 import tui.TerminalApp.Step
 import tui._
 import view._
-import zio.{Chunk, Queue, ZIO}
+import zio.{Chunk, Queue}
 
-case class SubredditDataSummary(name: String, postCount: Long)
-sealed trait AppMessage
-case object RefreshingStarted extends AppMessage
-case class RefreshingStopped(catSubs: Chunk[SubredditDataSummary]) extends AppMessage
-case class SubsChosen(catSubs: Chunk[SubredditDataSummary]) extends AppMessage
-case class UpdatedStats(catSubs: Chunk[SubredditDataSummary]) extends AppMessage
-
-final case class CliState(
-  catSubs: Chunk[SubredditDataSummary],
+// add error message to state and display it at the bottom
+// e.g. no subs selected, wrong key pressed, etc
+final case class AppState(
+  catSubs: Chunk[UnopenedPostsForSubreddit],
   index: Int,
   selected: Set[Int],
   refreshing: Boolean,
-  outQueue: Queue[AppMessage]
+  requestQueue: Queue[Request]
 ) {
-  def toggle: CliState = {
+  def toggle: AppState = {
     val newSelected =
       if (selected(index)) selected - index
       else selected + index
     copy(selected = newSelected)
   }
 
-  def toggleAll: CliState = {
+  def toggleAll: AppState = {
     val newSelected =
       if (selected.isEmpty) catSubs.indices.toSet
       else Set.empty[Int]
     copy(selected = newSelected)
   }
 
-  def moveUp: CliState =
+  def moveUp: AppState =
     if (index == 0) this
     else copy(index = index - 1)
 
-  def moveDown: CliState =
+  def moveDown: AppState =
     if (index == catSubs.size - 1) this
     else copy(index = index + 1)
 }
 
-object CliApp extends TerminalApp[AppMessage, CliState, AppMessage] {
-  override def render(state: CliState): View = {
+object Frontend extends TerminalApp[Response, AppState, Request] {
+  override def render(state: AppState): View = {
     val longestSubNameLength = state.catSubs.map(_.name.length).max
     val renderedSubs = state.catSubs.zipWithIndex.map { case (sub, idx) =>
       val selected: View =
@@ -132,24 +131,15 @@ object CliApp extends TerminalApp[AppMessage, CliState, AppMessage] {
   }
 
   override def update(
-    state: CliState,
-    event: TerminalEvent[AppMessage]
-  ): TerminalApp.Step[CliState, AppMessage] =
+    state: AppState,
+    event: TerminalEvent[Response]
+  ): TerminalApp.Step[AppState, Request] =
     event match {
       case TerminalEvent.UserEvent(message) =>
         message match {
-          case RefreshingStarted =>
-            os.write.append(os.home / "debug.log", s"\nSTARTED REFRESHING INSIDE APP")
-            Step.update(state.copy(refreshing = true))
           case RefreshingStopped(catSubs) =>
-            os.write.append(os.home / "debug.log", s"\nGOT REFRESHIGN STOPPED ${catSubs}")
             Step.update(state.copy(catSubs = catSubs, refreshing = false))
-          case SubsChosen(catSubs) =>
-            os.write.append(os.home / "debug.log", s"\nGOT SUBS CHOSEN ${catSubs} INSIDE APP")
-            ZIO.debug(s"GOT SUBS CHOSEN WITH ${catSubs}")
-            Step.update(state)
           case UpdatedStats(catSubs) =>
-            os.write.append(os.home / "debug.log", s"\nGOT UPDATED STATS ${catSubs} INSIDE APP")
             Step.update(state.copy(catSubs = catSubs))
         }
       case TerminalEvent.SystemEvent(keyEvent) =>
@@ -163,11 +153,8 @@ object CliApp extends TerminalApp[AppMessage, CliState, AppMessage] {
               Chunk.fromArray(state.selected.toList.sorted.map { idx =>
                 state.catSubs(idx)
               }.toArray)
-            // I'm just ignoring this exit?
             zio.Unsafe.unsafe { implicit u =>
-              os.write.append(os.home / "debug.log", s"\nSENDING SUBS CHOSEN INSIDE  APP")
-              zio.Runtime.default.unsafe.run(state.outQueue.offer(SubsChosen(chosen)))
-              os.write.append(os.home / "debug.log", s"\nSENT SUBS CHOSEN INSIDE  APP")
+              zio.Runtime.default.unsafe.run(state.requestQueue.offer(SubsChosen(chosen)))
             }
             Step.update(state)
           case KeyEvent.Up | KeyEvent.Character('k') =>
@@ -176,15 +163,12 @@ object CliApp extends TerminalApp[AppMessage, CliState, AppMessage] {
             Step.update(state.moveDown)
           case KeyEvent.Escape | KeyEvent.Exit | KeyEvent.Character('q') =>
             zio.Unsafe.unsafe { implicit u =>
-              zio.Runtime.default.unsafe.run(state.outQueue.shutdown)
-              os.write.append(os.home / "debug.log", s"\nSENT SHUT DOWN INSIDE  APP")
+              zio.Runtime.default.unsafe.run(state.requestQueue.shutdown)
             }
             Step.exit
           case KeyEvent.Character('r') =>
             zio.Unsafe.unsafe { implicit u =>
-              os.write.append(os.home / "debug.log", s"\nSENDING REFRESHING STARTED INSIDE  APP")
-              zio.Runtime.default.unsafe.run(state.outQueue.offer(RefreshingStarted))
-              os.write.append(os.home / "debug.log", s"SENT SUBS CHOSEN INSIDE  APP\n")
+              zio.Runtime.default.unsafe.run(state.requestQueue.offer(RefreshData))
             }
 
             Step.update(state.copy(refreshing = true))

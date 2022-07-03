@@ -1,3 +1,5 @@
+package services
+
 import zio.Console.printLine
 import zio.{Schedule, ZIO, ZLayer, durationInt}
 
