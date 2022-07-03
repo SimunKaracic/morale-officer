@@ -10,7 +10,6 @@ case class Neelix(postContext: PostService, scrapingService: ScrapingService, br
       Chunk.fromArray(
         postCounts
           .map(pc => SubredditDataSummary(name = pc._1, postCount = pc._2))
-          .sortBy(_.postCount)(Ordering.Long.reverse)
           .toArray
       )
     }

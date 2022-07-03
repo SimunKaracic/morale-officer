@@ -1,25 +1,50 @@
+import ammonite.ops.home
 import tui.TUI
 import view.View
-import zio.Console.printLine
-import zio.{Chunk, ZEnvironment, ZIO, ZLayer}
+import zio.stream.ZStream
+import zio.{Chunk, Queue, ZIO, ZLayer}
 
 final case class CLI(tui: TUI, neelix: Neelix) {
   val run = {
     for {
+      // whoah I need way better names for this
       _                  <- SqliteService.initializeDb()
+      appOutput          <- Queue.unbounded[AppMessage]
+      appInput           <- Queue.unbounded[AppMessage]
       subredditSummaries <- neelix.constructSubredditStatistics
       _ <- if (subredditSummaries.nonEmpty) {
-             runSelector(subredditSummaries)
+             runSelector(subredditSummaries, appOutput, appInput)
            } else {
              for {
                _     <- ZIO.debug(foundNoCatPicturesMessage)
                _     <- neelix.scrapingService.updatePostsDatabase()
                stats <- neelix.constructSubredditStatistics
 
-               _ <- runSelector(stats)
+               _ <- runSelector(stats, appOutput, appInput)
              } yield ()
            }
     } yield ()
+  }
+  private def handleAppMessages(message: AppMessage, appInput: Queue[AppMessage]) = message match {
+    case RefreshingStarted =>
+      for {
+        _          <- neelix.fetchImages
+        x           = os.write.append(home / "debug.log", "\nFETCHED IMAGES")
+        statistics <- neelix.constructSubredditStatistics
+        x           = os.write.append(home / "debug.log", s"\nCONSTRUCTED STATISTICS ${statistics}")
+        _          <- ZIO.debug()
+        _          <- appInput.offer(RefreshingStopped(statistics))
+        x           = os.write.append(home / "debug.log", s"\nSENDING REFRESH STOPPED")
+      } yield message
+    case SubsChosen(catSubs) =>
+      for {
+        _          <- neelix.openForSubreddits(catSubs.map(_.name).toList)
+        statistics <- neelix.constructSubredditStatistics
+        x           = os.write.append(home / "debug.log", s"\nCONSTRUCTED STATISTICS ${statistics}")
+        _          <- appInput.offer(UpdatedStats(statistics))
+      } yield message
+    case RefreshingStopped(catSubs) => ZIO.attempt(message)
+    case UpdatedStats(catSubs)      => ZIO.attempt(message)
   }
 
   private lazy val foundNoCatPicturesMessage: String =
@@ -32,27 +57,31 @@ final case class CLI(tui: TUI, neelix: Neelix) {
   case class CLIResult(shouldQuit: Boolean, subredditDataSummaries: Chunk[SubredditDataSummary])
 
   private def runSelector(
-    subredditDataSummaries: Chunk[SubredditDataSummary]
-  ): ZIO[CLI.CliEnvironment, Throwable, CliState] =
+    subredditDataSummaries: Chunk[SubredditDataSummary],
+    appOutput: Queue[AppMessage],
+    appInput: Queue[AppMessage]
+  ): ZIO[TUI, Throwable, Unit] =
     for {
-      result <- CliApp.run(CliState(subredditDataSummaries, 0, Set.empty)).provideEnvironment(ZEnvironment(tui))
-      _ <- ZIO.when(result.selected.nonEmpty) {
-             for {
-               _          <- neelix.openForSubreddits(result.catSubs.map(_.name).toList)
-               statistics <- neelix.constructSubredditStatistics
-               _          <- runSelector(statistics)
-             } yield ()
-           }
-      _ <- ZIO.when(result.shouldRefresh) {
-             for {
-               _          <- neelix.fetchImages
-               statistics <- neelix.constructSubredditStatistics
-               _          <- runSelector(statistics)
-             } yield ()
-           }
-      subredditSummaries <- neelix.constructSubredditStatistics
-      _                  <- printLine("What? I'm up to the last yield")
-    } yield result.copy(catSubs = subredditSummaries)
+      // here's the problem. It's two different streams
+      _ <- ZIO.raceFirst(
+             TUI
+               .runWithEvents(CliApp)(
+                 ZStream.fromQueue(appInput),
+                 CliState(
+                   catSubs = subredditDataSummaries,
+                   index = 0,
+                   selected = Set.empty,
+                   refreshing = false,
+                   outQueue = appOutput
+                 )
+               ),
+             Seq(ZStream
+               .fromQueue(appOutput)
+               .mapZIO(message => handleAppMessages(message, appInput))
+               .runDrain)
+           )
+      _ = os.write.append(home / "debug.log", s"\nFINISHED TUI and stream")
+    } yield ()
 }
 
 object CLI {
